@@ -1,0 +1,652 @@
+# HG changeset patch
+# Parent  26871e18d231e2f73464940f794baeb2468ec44f
+
+diff --git a/configs/common/O3_ARM_v7a.py b/configs/common/O3_ARM_v7a.py
+--- a/configs/common/O3_ARM_v7a.py
++++ b/configs/common/O3_ARM_v7a.py
+@@ -88,7 +88,7 @@
+               O3_ARM_v7a_Load(), O3_ARM_v7a_Store(), O3_ARM_v7a_FP()]
+ 
+ # Bi-Mode Branch Predictor
+-'''
++
+ class O3_ARM_v7a_BP(BiModeBP):
+     globalPredictorSize = 8192
+     globalCtrBits = 2
+@@ -98,7 +98,7 @@
+     BTBTagSize = 18
+     RASSize = 16
+     instShiftAmt = 2
+-'''
++
+ '''
+ 
+ class O3_ARM_v7a_BP(GShareBP):
+@@ -132,7 +132,7 @@
+     RASSize = 16
+     instShiftAmt = 2
+ '''
+-
++'''
+ class O3_ARM_v7a_BP(YagsBP):
+     globalPredictorSize = 2048
+     globalCtrBits = 2
+@@ -142,7 +142,7 @@
+     BTBTagSize = 18
+     RASSize = 16
+     instShiftAmt = 2
+-
++'''
+ class O3_ARM_v7a_3(DerivO3CPU):
+     LQEntries = 16
+     SQEntries = 16
+diff --git a/configs/common/SysPaths.py b/configs/common/SysPaths.py
+--- a/configs/common/SysPaths.py
++++ b/configs/common/SysPaths.py
+@@ -57,7 +57,7 @@
+         try:
+             path = env['M5_PATH'].split(':')
+         except KeyError:
+-            path = [ '/dist/m5/system', '/n/poolfs/z/dist/m5/system' ]
++            path = [ '/home/huiren', '']
+ 
+         # expand '~' and '~user' in paths
+         path = map(os.path.expanduser, path)
+diff --git a/src/mem/DRAMCtrl.py b/src/mem/DRAMCtrl.py
+--- a/src/mem/DRAMCtrl.py
++++ b/src/mem/DRAMCtrl.py
+@@ -49,7 +49,7 @@
+ 
+ # Enum for memory scheduling algorithms, currently First-Come
+ # First-Served and a First-Row Hit then First-Come First-Served
+-class MemSched(Enum): vals = ['fcfs', 'frfcfs']
++class MemSched(Enum): vals = ['fcfs', 'frfcfs', 'parbs']
+ 
+ # Enum for the address mapping. With Ch, Ra, Ba, Ro and Co denoting
+ # channel, rank, bank, row and column, respectively, and going from
+@@ -96,7 +96,7 @@
+                                            "switching to reads")
+ 
+     # scheduler, address map and page policy
+-    mem_sched_policy = Param.MemSched('frfcfs', "Memory scheduling policy")
++    mem_sched_policy = Param.MemSched('parbs', "Memory scheduling policy")
+     addr_mapping = Param.AddrMap('RoRaBaCoCh', "Address mapping policy")
+     page_policy = Param.PageManage('open_adaptive', "Page management policy")
+ 
+diff --git a/src/mem/dram_ctrl.cc b/src/mem/dram_ctrl.cc
+--- a/src/mem/dram_ctrl.cc
++++ b/src/mem/dram_ctrl.cc
+@@ -99,6 +99,14 @@
+     fatal_if(!isPowerOf2(burstSize), "DRAM burst size %d is not allowed, "
+              "must be a power of two\n", burstSize);
+ 
++    // batch.clear();
++
++    for(int i = 0; i < THREAD_NUM; i++) {
++        for(int j = 0; j < BANK_NUM; j++)
++            reqsInBankPerThread[i][j] = 0;
++        reqsPerThread[i] = 0;
++    }
++
+     for (int i = 0; i < ranksPerChannel; i++) {
+         Rank* rank = new Rank(*this, p);
+         ranks.push_back(rank);
+@@ -705,7 +713,8 @@
+     // packet is simply moved to the head of the queue. The other
+     // methods know that this is the place to look. For example, with
+     // FCFS, this method does nothing
+-    assert(!queue.empty());
++    if((memSchedPolicy == Enums::frfcfs) || (memSchedPolicy == Enums::fcfs))
++        assert(!queue.empty());
+ 
+     // bool to indicate if a packet to an available rank is found
+     bool found_packet = false;
+@@ -734,11 +743,468 @@
+         }
+     } else if (memSchedPolicy == Enums::frfcfs) {
+         found_packet = reorderQueue(queue, extra_col_delay);
++    } 
++      else if (memSchedPolicy == Enums::parbs) {
++        found_packet = parbsReorderQueue(queue, extra_col_delay);
++        // std::cout<<"line 749 reached"<<endl;
+     } else
+         panic("No scheduling policy chosen\n");
+     return found_packet;
+ }
+ 
++void
++DRAMCtrl::formBatch(std::deque<DRAMPacket*>& queue) 
++{
++    if (queue.empty()) {
++        return;
++    }
++    for (auto i = queue.begin(); i != queue.end(); i++) {
++        if((*i)->in_batch)
++            return;
++    }
++    //std::cout<<"starting forming a batch"<<endl;
++    for(int i = 0; i < THREAD_NUM; i++) {
++        reqsPerThread[i] = 0;
++        for(int j = 0; j < BANK_NUM; j++)
++            reqsInBankPerThread[i][j] = 0;
++    }
++    reqsPerThread[5] = 0;
++    // queuePos.clear();
++    auto i = queue.begin();
++    int ctr = 0;
++    int idx = 0;
++    //bool increment_it;
++    while(ctr < BATCH_SIZE) {
++        //increment_it = true;
++        i = queue.begin() + idx;
++        if(i == queue.end())
++            break;
++        DRAMPacket* selected_pkt = *i;
++        // batch.push_back(selected_pkt);
++        // queuePos.push_back(idx);
++        // selected_pkt->in_batch = true;
++        // ctr++;
++        if(selected_pkt == NULL)
++            break;
++        //std::cout<<"line 769 reached"<<endl;
++        if(selected_pkt->isRead) {
++            // std::cout<<"line 771 reached"<<endl;
++            uint8_t bank = selected_pkt->bankId;
++            // std::cout<<"bank is:"<<(int)bank<<endl;
++            // if (selected_pkt->pkt->req->hasContextId()) {
++                int tid = selected_pkt->pkt->req->contextId();
++                if(reqsInBankPerThread[tid][bank] < MARKING_CAP) {
++                    // batch.push_back(selected_pkt);
++                    // queuePos[ctr] = idx;
++                    selected_pkt->in_batch = true;
++                    reqsInBankPerThread[tid][bank] += 1;
++                    reqsPerThread[tid] += 1;
++                    ctr++;
++                }
++            // }
++            // else {
++            //     batch.push_back(selected_pkt);
++            //     queuePos[ctr] = idx;
++            //     reqsPerThread[5] += 1;
++            //     ctr++;
++            // }
++        }
++        else {
++            uint8_t bank = selected_pkt->bankId;
++            // std::cout<<"line 804 reached"<<endl;
++            // if(selected_pkt->pkt->isWrite()) {
++            //     // std::cout<<"line 806 reached"<<endl;
++                if(reqsInBankPerThread[4][bank] < MARKING_CAP) {
++                    // batch.push_back(selected_pkt);
++                    // queuePos[ctr] = idx;
++                    selected_pkt->in_batch = true;
++                    reqsInBankPerThread[4][bank] += 1;
++                    reqsPerThread[4] += 1;
++                    ctr++;
++                }  
++                // std::cout<<"line 814 reached"<<endl;
++            // }
++            // else {
++            //     batch.push_back(selected_pkt);
++            //     queuePos[ctr] = idx;
++            //     reqsPerThread[5] += 1;
++            //     ctr++;               
++            // }
++            
++            // std::cout<<"line 828 reached"<<endl;
++        }
++        // std::cout<<"line 798 reached"<<endl;
++        idx++;
++    }
++    highestRank(queue);
++    // if(priority.size() == 5)
++    //     cout<<priority[0]<<"; "<<priority[1]<<"; "<<priority[2]<<"; "<<priority[3]<<"; "<<priority[4]<<endl;
++    // else
++    //     cout<<priority[0]<<"; "<<priority[1]<<"; "<<priority[2]<<"; "<<priority[3]<<"; "<<priority[4]<<"; "<<priority[5]<<endl;
++
++}
++
++pair<uint64_t, bool>
++DRAMCtrl::minBankPrepBatch(const deque<DRAMPacket*>& queue,
++                      Tick min_col_at, int Id) const
++{
++    uint64_t bank_mask = 0;
++    Tick min_act_at = MaxTick;
++
++    // latest Tick for which ACT can occur without incurring additoinal
++    // delay on the data bus
++    const Tick hidden_act_max = std::max(min_col_at - tRCD, curTick());
++
++    // Flag condition when burst can issue back-to-back with previous burst
++    bool found_seamless_bank = false;
++
++    // Flag condition when bank can be opened without incurring additional
++    // delay on the data bus
++    bool hidden_bank_prep = false;
++
++    // determine if we have queued transactions targetting the
++    // bank in question
++    vector<bool> got_waiting(ranksPerChannel * banksPerRank, false);
++    for (const auto& p : queue) {
++        if(p->in_batch == true && p->priority == Id) {
++            if (p->rankRef.isAvailable())
++                got_waiting[p->bankId] = true;
++        }
++    }
++
++    // Find command with optimal bank timing
++    // Will prioritize commands that can issue seamlessly.
++    for (int i = 0; i < ranksPerChannel; i++) {
++        for (int j = 0; j < banksPerRank; j++) {
++            uint16_t bank_id = i * banksPerRank + j;
++
++            // if we have waiting requests for the bank, and it is
++            // amongst the first available, update the mask
++            if (got_waiting[bank_id]) {
++                // make sure this rank is not currently refreshing.
++                assert(ranks[i]->isAvailable());
++                // simplistic approximation of when the bank can issue
++                // an activate, ignoring any rank-to-rank switching
++                // cost in this calculation
++                Tick act_at = ranks[i]->banks[j].openRow == Bank::NO_ROW ?
++                    std::max(ranks[i]->banks[j].actAllowedAt, curTick()) :
++                    std::max(ranks[i]->banks[j].preAllowedAt, curTick()) + tRP;
++
++                // When is the earliest the R/W burst can issue?
++                Tick col_at = std::max(ranks[i]->banks[j].colAllowedAt,
++                                       act_at + tRCD);
++
++                // bank can issue burst back-to-back (seamlessly) with
++                // previous burst
++                bool new_seamless_bank = col_at <= min_col_at;
++
++                // if we found a new seamless bank or we have no
++                // seamless banks, and got a bank with an earlier
++                // activate time, it should be added to the bit mask
++                if (new_seamless_bank ||
++                    (!found_seamless_bank && act_at <= min_act_at)) {
++                    // if we did not have a seamless bank before, and
++                    // we do now, reset the bank mask, also reset it
++                    // if we have not yet found a seamless bank and
++                    // the activate time is smaller than what we have
++                    // seen so far
++                    if (!found_seamless_bank &&
++                        (new_seamless_bank || act_at < min_act_at)) {
++                        bank_mask = 0;
++                    }
++
++                    found_seamless_bank |= new_seamless_bank;
++
++                    // ACT can occur 'behind the scenes'
++                    hidden_bank_prep = act_at <= hidden_act_max;
++
++                    // set the bit corresponding to the available bank
++                    replaceBits(bank_mask, bank_id, bank_id, 1);
++                    min_act_at = act_at;
++                }
++            }
++        }
++    }
++
++    return make_pair(bank_mask, hidden_bank_prep);
++}
++
++
++bool
++DRAMCtrl::reorderBatch(std::deque<DRAMPacket*>& queue, Tick extra_col_delay)
++{
++    // Only determine this if needed
++    uint64_t earliest_banks = 0;
++    bool hidden_bank_prep = false;
++
++    // search for seamless row hits first, if no seamless row hit is
++    // found then determine if there are other packets that can be issued
++    // without incurring additional bus delay due to bank timing
++    // Will select closed rows first to enable more open row possibilies
++    // in future selections
++    bool found_hidden_bank = false;
++
++    // remember if we found a row hit, not seamless, but bank prepped
++    // and ready
++    bool found_prepped_pkt = false;
++
++    // if we have no row hit, prepped or not, and no seamless packet,
++    // just go for the earliest possible
++    bool found_earliest_pkt = false;
++
++    auto selected_pkt_it = queue.end();
++    // std::cout<<"line 814 reached"<<endl;
++
++    // std::deque<DRAMPacket*> tmp;
++    // for(auto i = batch.begin(); i != batch.end(); i++) {
++    //     DRAMPacket* dram_pkt_tmp = *i;
++    //     if(dram_pkt_tmp->isRead) {
++    //         if(dram_pkt_tmp->pkt->req->hasContextId()) {
++    //             if(dram_pkt_tmp->pkt->req->contextId() == Id)
++    //                     tmp.push_back(dram_pkt_tmp);
++    //         }
++    //         else {
++    //             if(Id == 5)
++    //                 tmp.push_back(dram_pkt_tmp);
++    //         }
++    //     }
++    //     else {
++    //         if((dram_pkt_tmp->pkt->isWrite())&&Id == 4)
++    //             tmp.push_back(dram_pkt_tmp);
++    //         else {
++    //             if(Id == 5)
++    //                 tmp.push_back(dram_pkt_tmp);
++    //         }
++    //     }
++    // }
++    // std::cout<<"line 822 reached"<<endl;
++    // time we need to issue a column command to be seamless
++    const Tick min_col_at = std::max(busBusyUntil - tCL + extra_col_delay,
++                                     curTick());
++
++    for(int Id = 0; Id < THREAD_NUM; Id++) {
++        selected_pkt_it = queue.end();
++        for (auto i = queue.begin(); i != queue.end() ; ++i) {
++            DRAMPacket* dram_pkt = *i;
++            const Bank& bank = dram_pkt->bankRef;
++
++            if(dram_pkt->in_batch == false)
++                continue;
++            // check if rank is available, if not, jump to the next packet
++            if (dram_pkt->rankRef.isAvailable()) {
++                // check if it is a row hit
++                if (bank.openRow == dram_pkt->row) {
++                    // no additional rank-to-rank or same bank-group
++                    // delays, or we switched read/write and might as well
++                    // go for the row hit
++                    if (bank.colAllowedAt <= min_col_at) {
++                        // FCFS within the hits, giving priority to
++                        // commands that can issue seamlessly, without
++                        // additional delay, such as same rank accesses
++                        // and/or different bank-group accesses
++                        DPRINTF(DRAM, "Seamless row buffer hit\n");
++                        selected_pkt_it = i;
++                        // no need to look through the remaining queue entries
++                        break;
++                    } else if (!found_hidden_bank && !found_prepped_pkt) {
++                        // if we did not find a packet to a closed row that can
++                        // issue the bank commands without incurring delay, and
++                        // did not yet find a packet to a prepped row, remember
++                        // the current one
++                        selected_pkt_it = i;
++                        found_prepped_pkt = true;
++                        DPRINTF(DRAM, "Prepped row buffer hit\n");
++                    }
++                } else if (!found_earliest_pkt) {
++                    // if(dram_pkt->isRead) {
++                        // if(dram_pkt->pkt->req->hasContextId()) {
++                            // int tid = dram_pkt->pkt->req->contextId();
++                            if(dram_pkt->priority != Id)
++                                continue;
++                        // }
++                        // else
++                        //     if(Id != 5)
++                        //         continue;
++                    // }
++                    // else {
++                        // if(dram_pkt->pkt->isWrite()) {
++                            // if(Id != 4)
++                                // continue;
++                        // }
++                        // else
++                        //     if(Id != 5)
++                        //         continue;
++                    // }
++                    
++                    // if we have not initialised the bank status, do it
++                    // now, and only once per scheduling decisions
++                    if (earliest_banks == 0) {
++                        // determine entries with earliest bank delay
++                        pair<uint64_t, bool> bankStatus =
++                            minBankPrepBatch(queue, min_col_at, Id);
++                        earliest_banks = bankStatus.first;
++                        hidden_bank_prep = bankStatus.second;
++                    }
++
++                    // bank is amongst first available banks
++                    // minBankPrep will give priority to packets that can
++                    // issue seamlessly
++                    if (bits(earliest_banks, dram_pkt->bankId, dram_pkt->bankId)) {
++                        found_earliest_pkt = true;
++                        found_hidden_bank = hidden_bank_prep;
++
++                        // give priority to packets that can issue
++                        // bank commands 'behind the scenes'
++                        // any additional delay if any will be due to
++                        // col-to-col command requirements
++                        if (hidden_bank_prep || !found_prepped_pkt)
++                            selected_pkt_it = i;
++                    }
++                }
++            }
++        }
++        if(selected_pkt_it != queue.end())
++            break;
++    }
++    // std::cout<<"line 946 reached"<<endl;
++    if (selected_pkt_it != queue.end()) {
++        DRAMPacket* selected_pkt = *selected_pkt_it;
++        // if(selected_pkt->isRead) {
++        //     // uint8_t bank = selected_pkt->bankId;
++        //     // if(selected_pkt->pkt->req->hasContextId() == false) {
++        //     //     if(selected_pkt->pkt->req->masterId() == 0) {
++        //     //         reqsPerThread[4]--;
++        //     //         reqsInBankPerThread[4][bank]--;
++        //     //     }
++        //     // }
++        //     // if(selected_pkt->pkt->req->hasContextId()) {
++        //         int tid = selected_pkt->pkt->req->contextId();
++        //         reqsPerThread[tid]--;
++        //     //     // reqsInBankPerThread[tid][bank]--;
++        //     // }
++        //     // else {
++        //     //     reqsPerThread[5]--;
++        //     // }
++        // }
++        // else {
++        //     // if(selected_pkt->pkt->isWrite()) {
++        //         reqsPerThread[4]--;
++        //     // }
++        //     // else{
++        //     //     reqsPerThread[5]--;
++        //     // }
++        // }
++        // std::cout<<"line 961 reached"<<endl;
++        // int tmp = selected_pkt_it - batch.begin();
++        // queue.erase(queue.begin() + queuePos[tmp]);
++        // queue.push_front(selected_pkt);
++        // for(int i = 0; i < queuePos.size(); i++) {
++        //     queuePos[i]--;
++        // }
++        // queuePos.erase(queuePos.begin() + tmp);
++        // batch.erase(selected_pkt_it);
++        // std::cout<<"line 964 reached"<<endl;
++        selected_pkt->in_batch = false;
++        queue.erase(selected_pkt_it);
++        queue.push_front(selected_pkt);
++        return true;
++    }
++
++    return false;
++}
++
++void
++DRAMCtrl::highestRank(std::deque<DRAMPacket*>& queue)
++{
++    // int resultId = -1;
++    // int result_max = 1000;
++    // int result_total_load = 1000;
++    int maxBankLoad[THREAD_NUM];
++    int sum = 0;
++    priority.clear();
++    vector<std::tuple<int, int, int>> rank; 
++    for(int i = 0; i < THREAD_NUM; i++) {
++        maxBankLoad[i] = 0;
++        for(int j = 0; j < banksPerRank; j++) {
++            if(reqsInBankPerThread[i][j] > maxBankLoad[i])
++                maxBankLoad[i] = reqsInBankPerThread[i][j];
++        }
++        sum += reqsPerThread[i];
++        if(reqsPerThread[i] != 0)
++            rank.push_back(make_tuple(maxBankLoad[i], reqsPerThread[i], i));
++        else
++            rank.push_back(make_tuple(MARKING_CAP + 1, reqsPerThread[i], i));
++
++        // //std::cout<<"line 936 reached"<<endl;
++        // if((maxBankLoad[i] < result_max) && (reqsPerThread[i] != 0)) {
++        //     result_max = maxBankLoad[i];
++        //     result_total_load = reqsPerThread[i];
++        //     resultId = i;
++        // }
++        // //std::cout<<"line 942 reached"<<endl;
++        // if(maxBankLoad[i] == result_max) {
++        //     if((reqsPerThread[i] < result_total_load) && (reqsPerThread[i] != 0)) {
++        //         result_max = maxBankLoad[i];
++        //         result_total_load = reqsPerThread[i];
++        //         resultId = i;                
++        //     }
++        // }
++        // //std::cout<<"line 950 reached"<<endl;
++    }
++    sort(rank.begin(), rank.end());
++    // if(sum != batch.size())
++        // priority.push_back(5);
++    for(int i = 0; i < THREAD_NUM; i++) {
++        priority.push_back(std::get<2>(rank[i]));
++    }
++    for(auto i = queue.begin(); i != queue.end(); i++) {
++        DRAMPacket* selected_pkt = *i;
++        if(selected_pkt->in_batch == false)
++            continue;
++        if(selected_pkt->isRead) {
++            int tid = selected_pkt->pkt->req->contextId();
++            for(int j = 0; j < THREAD_NUM; j++) {
++                if(tid == priority[j])
++                    selected_pkt->priority = j;
++            }
++        }
++        else {
++            for(int j = 0; j < THREAD_NUM; j++) {
++                if(priority[j] == 4)
++                    selected_pkt->priority = j;
++            }
++        }
++    }
++    return;
++}
++
++// int
++// DRAMCtrl::findHighestRank() {
++//     for(auto i = priority.begin(); i != priority.end(); i++) {
++//         if(reqsPerThread[*i] != 0) {
++//             return *i;
++//         }
++//     }
++//     return -1;
++// }
++
++bool
++DRAMCtrl::parbsReorderQueue(std::deque<DRAMPacket*>& queue, Tick extra_col_delay)
++{
++    // std::cout<<"line 965 reached"<<endl;
++    formBatch(queue);
++    // std::cout<<"line 967 reached"<<endl;
++
++    // int highestRankId = findHighestRank();
++    // std::cout<<highestRankId<<"; "<<reqsPerThread[0]<<"; "<<reqsPerThread[1]<<"; "<<reqsPerThread[2]<<"; "<<reqsPerThread[3]<<"; "<<reqsPerThread[4]<<"; "<<endl;
++    // std::cout<<"line 971 reached"<<endl;
++    bool result = reorderBatch(queue, extra_col_delay/*, highestRankId*/);
++    // printf("test");
++    // std::cout<<"line 974 reached"<<endl;
++
++    return result;
++}
++
+ bool
+ DRAMCtrl::reorderQueue(std::deque<DRAMPacket*>& queue, Tick extra_col_delay)
+ {
+diff --git a/src/mem/dram_ctrl.hh b/src/mem/dram_ctrl.hh
+--- a/src/mem/dram_ctrl.hh
++++ b/src/mem/dram_ctrl.hh
+@@ -66,6 +66,11 @@
+ #include "sim/eventq.hh"
+ #include "mem/drampower.hh"
+ 
++
++#define BATCH_SIZE 40
++#define MARKING_CAP 5
++#define THREAD_NUM 5
++#define BANK_NUM 128
+ /**
+  * The DRAM controller is a single-channel memory controller capturing
+  * the most important timing constraints associated with a
+@@ -91,7 +96,13 @@
+ {
+ 
+   private:
++    // std::vector<int> queuePos;
+ 
++    int reqsInBankPerThread[THREAD_NUM][BANK_NUM];
++
++    int reqsPerThread[THREAD_NUM];
++
++    std::vector<int> priority;
+     // For now, make use of a queued slave port to avoid dealing with
+     // flow control for the responses being sent back
+     class MemoryPort : public QueuedSlavePort
+@@ -116,6 +127,7 @@
+ 
+     };
+ 
++
+     /**
+      * Our incoming port, for a multi-ported controller add a crossbar
+      * in front of it
+@@ -461,13 +473,16 @@
+         Bank& bankRef;
+         Rank& rankRef;
+ 
++        bool in_batch;
++        //0 highest, 4 lowest
++        int priority;
+         DRAMPacket(PacketPtr _pkt, bool is_read, uint8_t _rank, uint8_t _bank,
+                    uint32_t _row, uint16_t bank_id, Addr _addr,
+                    unsigned int _size, Bank& bank_ref, Rank& rank_ref)
+             : entryTime(curTick()), readyTime(curTick()),
+               pkt(_pkt), isRead(is_read), rank(_rank), bank(_bank), row(_row),
+               bankId(bank_id), addr(_addr), size(_size), burstHelper(NULL),
+-              bankRef(bank_ref), rankRef(rank_ref)
++              bankRef(bank_ref), rankRef(rank_ref), in_batch(false), priority(-1)
+         { }
+ 
+     };
+@@ -581,6 +596,16 @@
+      */
+     bool chooseNext(std::deque<DRAMPacket*>& queue, Tick extra_col_delay);
+ 
++    void formBatch(std::deque<DRAMPacket*>& queue);
++
++    bool reorderBatch(std::deque<DRAMPacket*>& queue, Tick extra_col_delay);
++
++    void highestRank(std::deque<DRAMPacket*>& queue);
++    // int findHighestRank();
++    std::pair<uint64_t, bool> minBankPrepBatch(const std::deque<DRAMPacket*>& queue,
++                      Tick min_col_at, int Id) const;
++
++    bool parbsReorderQueue(std::deque<DRAMPacket*>& queue, Tick extra_col_delay);
+     /**
+      * For FR-FCFS policy reorder the read/write queue depending on row buffer
+      * hits and earliest bursts available in DRAM
+@@ -649,6 +674,7 @@
+     /**
+      * The controller's main read and write queues
+      */
++    // std::deque<DRAMPacket*> batch;
+     std::deque<DRAMPacket*> readQueue;
+     std::deque<DRAMPacket*> writeQueue;
+ 

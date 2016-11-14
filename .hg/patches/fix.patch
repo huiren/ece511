@@ -1,0 +1,26 @@
+# HG changeset patch
+# Parent a51ae096ca25382e71c484e14083d398f106752a
+
+diff --git a/configs/example/se.py b/configs/example/se.py
+--- a/configs/example/se.py
++++ b/configs/example/se.py
+@@ -41,6 +41,7 @@
+ # Simple test script
+ #
+ # "m5 test.py"
++# test patch
+ 
+ import optparse
+ import sys
+diff --git a/src/arch/arm/linux/process.cc b/src/arch/arm/linux/process.cc
+--- a/src/arch/arm/linux/process.cc
++++ b/src/arch/arm/linux/process.cc
+@@ -67,7 +67,7 @@
+ 
+     strcpy(name->sysname, "Linux");
+     strcpy(name->nodename, "m5.eecs.umich.edu");
+-    strcpy(name->release, "3.0.0");
++    strcpy(name->release, "3.2.0");
+     strcpy(name->version, "#1 Mon Aug 18 11:32:15 EDT 2003");
+     strcpy(name->machine, "armv7l");
+ 

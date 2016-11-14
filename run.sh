@@ -1,0 +1,2 @@
+#!/bin/bash
+time /home/huiren/gem5/build/ARM/gem5.fast -d /home/huiren/gem5/m5out_4cores4apps1 /home/huiren/gem5/configs/example/fs.py --num-cpus=4 --caches --l2cache --machine-type=VExpress_EMM --disk-image=/home/huiren/gem5/disks/homework3.img --kernel=/home/huiren/gem5/binaries/vmlinux.aarch32.ll_20131205.0-gem5 --dtb-filename=/home/huiren/gem5/binaries/vexpress.aarch32.ll_20131205.0-gem5.4cpu.dtb --script=/home/huiren/ece511/homework3/4cores4apps1.rcS --cpu-type=detailed --mem-size=2048MB --mem-type=DDR3_1600_x64 -r 1

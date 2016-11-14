@@ -1,0 +1,37 @@
+[paths]
+default = http://repo.gem5.org/gem5
+
+[ui]
+# Set the username you will commit code with
+#  Use your username and an email "it doesn't need to
+# be your uiuc email"
+username=Huiren Li <hli86@illinois.edu> 
+ssh = ssh -C
+
+[extensions]
+style = /home/huiren/gem5/util/hgstyle.py
+
+[defaults]
+qrefresh = --git
+email = --git
+diff = --git
+
+[extensions]
+# These are various extensions we find useful
+# Mercurial Queues -- allows managing of changes as 
+# a series of patches
+hgext.mq =
+
+# PatchBomb -- send a series of changesets as e-mailed patches
+hgext.patchbomb =
+
+# External Diff tool (e.g. kdiff3, meld, vimdiff, etc)
+hgext.extdiff =
+
+# Fetch allows for a pull/update operation to be done # with one command and automatically commits a merge 
+# changeset
+hgext.fetch =
+
+[hooks]
+pretxncommit.style = python:hgstyle.check_style
+pre-qrefresh.style = python:hgstyle.check_style
