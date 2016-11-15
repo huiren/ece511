@@ -53,16 +53,15 @@ fastPathBP::fastPathBP(const fastPathBPParams *params)
     // for (int i = 0; i < globalPredictorSize; ++i) {
     //     takenCounters[i].setBits(globalCtrBits);
     // }
-    SG = 0;
-    G = 0;
-    for(int i = 0; i < WEIGHT_ENTRY_NUM; i++) {
+    for(int i = 0; i < WEIGHT_NUM; i++) {
         SR[i] = 0;
         R[i] = 0;
         v[i] = 0;
         s_v[i] = 0;
-        H[i] = true;
-        for(int j = 0; j < WEIGHT_NUM; j++) {
-            weights[i][j] = 0;
+        SG[i] = false;
+        G[i] = false;
+        for(int j = 0; j < WEIGHT_ENTRY_NUM; j++) {
+            weights[j][i] = 0;
         }
     }
 
@@ -80,21 +79,25 @@ fastPathBP::fastPathBP(const fastPathBPParams *params)
 void
 fastPathBP::uncondBranch(ThreadID tid, Addr pc, void * &bpHistory)
 {                    
+    // std::cout<<"line 82 reached"<<std::endl;
     BPHistory *history = new BPHistory;
     history->globalHistoryReg = globalHistoryReg[tid];
     history->result = 1;
     history->finalPred = true;
     bpHistory = static_cast<void*>(history);
     updateGlobalHistReg(tid, true);
+    // std::cout<<"line 89 reached"<<std::endl;
 }
 
 void
 fastPathBP::squash(ThreadID tid, void *bpHistory)
 {
+    // std::cout<<"line 93 reached"<<std::endl;
     BPHistory *history = static_cast<BPHistory*>(bpHistory);
     globalHistoryReg[tid] = history->globalHistoryReg;
 
     delete history;
+    // std::cout<<"line 98 reached"<<std::endl;
 }
 
 /*
@@ -119,7 +122,7 @@ fastPathBP::lookup(ThreadID tid, Addr branchAddr, void * &bpHistory)
     //                           > takenThreshold;
 
     bool finalPrediction;
-
+    // std::cout<<"line 121 reached"<<std::endl;
     BPHistory *history = new BPHistory;
     history->globalHistoryReg = globalHistoryReg[tid];
     
@@ -142,19 +145,22 @@ fastPathBP::lookup(ThreadID tid, Addr branchAddr, void * &bpHistory)
     updateGlobalHistReg(tid, finalPrediction);
     //prediction is done
     //update partial sum
-    for(int i = 1; i < WEIGHT_ENTRY_NUM; i++) {
+    for(int i = WEIGHT_NUM - 1; i > 0; i--) {
         s_v[i] = s_v[i-1];
     }
     s_v[0] = entryIdx;
 
-    for(int i = 0; i < WEIGHT_ENTRY_NUM; i++) {
-        v[i] = s_v[i];
-        H[i] = ((SG >> i) & 1)==1?true:false;
+    for(int i = 0; i < WEIGHT_NUM; i++) {
+        history->v[i] = s_v[i];
+        history->H[i] = SG[i];
     }
+    // std::cout<<"line 153 reached"<<std::endl;
 
-    int SR_tmp[WEIGHT_ENTRY_NUM];
-    for(int j = 1; j < WEIGHT_ENTRY_NUM; j++) {
-        int k = WEIGHT_ENTRY_NUM - 1 - j;
+    history->idx = entryIdx;
+
+    int SR_tmp[WEIGHT_NUM];
+    for(int j = 1; j < WEIGHT_NUM; j++) {
+        int k = WEIGHT_NUM - 1 - j;
         if(finalPrediction) {
             SR_tmp[k + 1] = SR[k] + weights[entryIdx][j]; 
         }
@@ -162,11 +168,15 @@ fastPathBP::lookup(ThreadID tid, Addr branchAddr, void * &bpHistory)
             SR_tmp[k + 1] = SR[k] - weights[entryIdx][j]; 
         }
     }
-    for(int i = 0; i < WEIGHT_ENTRY_NUM; i++) {
+    for(int i = 0; i < WEIGHT_NUM; i++) {
         SR[i] = SR_tmp[i];
     }
     SR[0] = 0;
-    SG = (SG << 1)|(finalPrediction?1:0);
+    for(int i = WEIGHT_NUM - 1; i > 1; i--) {
+        SG[i] = SG[i - 1];
+    }
+    SG[1] = finalPrediction;
+    // std::cout<<"line 175 reached"<<std::endl;
     return finalPrediction;
 }
 
@@ -187,9 +197,11 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
                  bool squashed)
 {
     if (bpHistory) {
+        // std::cout<<"line 196 reached"<<std::endl;
         BPHistory *history = static_cast<BPHistory*>(bpHistory);
 
-        unsigned globalHistoryIdx = branchAddr >> instShiftAmt;
+        // std::cout<<"line 203 reached"<<std::endl;
+        //unsigned globalHistoryIdx = branchAddr >> instShiftAmt;
                                     // ^ history->globalHistoryReg)
                                     // & globalHistoryMask);
 
@@ -203,10 +215,10 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
         // } else {
         //     takenCounters[globalHistoryIdx].decrement();
         // }
-        unsigned entryIdx = globalHistoryIdx % WEIGHT_ENTRY_NUM;
+        unsigned entryIdx = history->idx;
 
-        for(int i = 1; i < WEIGHT_ENTRY_NUM; i++) {
-            int k = WEIGHT_ENTRY_NUM - 1 - i;
+        for(int i = 1; i < WEIGHT_NUM; i++) {
+            int k = WEIGHT_NUM - 1 - i;
             if(taken) {
                 R[k + 1] = R[k] + weights[entryIdx][i];
             }
@@ -215,29 +227,37 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
             }
         }
         R[0] = 0;
+        // std::cout<<"line 224 reached"<<std::endl;
 
-        G = (G<<1)|(taken?1:0);
-        for(int i = 1; i < WEIGHT_ENTRY_NUM; i++) {
+        for(int i = WEIGHT_NUM - 1; i > 1; i--) {
+            G[i] = G[i - 1];
+        }
+        G[1] = taken;
+        for(int i = WEIGHT_NUM - 1; i > 0; i--) {
             v[i] = v[i - 1];
         }
         v[0] = entryIdx;
 
         if(taken != finalPred) {
-            for(int i = 0; i < WEIGHT_ENTRY_NUM; i++) {
+            for(int i = 0; i < WEIGHT_NUM; i++) {
                 SR[i] = R[i];
                 s_v[i] = v[i];
+                SG[i] = G[i];
             }
-            SG = G;
         }
+        // std::cout<<"line 242 reached"<<std::endl;
 
         if(((taken == true) && (finalPred == false)) || ((taken == false) && (finalPred == true)) 
              || std::abs(result) <= THRESHOLD) {
             weights[entryIdx][0] = taken?1:-1 + weights[entryIdx][0];
             for(int i = 1; i < WEIGHT_NUM; i++) {
-                int k = v[i];
-                weights[k][i] += taken==H[i]?1:-1; 
+                int k = history->v[i];
+                // std::cout<<"line 249 reached"<<k<<std::endl;
+                weights[k][i] += taken==history->H[i]?1:-1; 
+                // std::cout<<"line 251 reached"<<std::endl;
             }
         }  
+        // std::cout<<"line 254 reached"<<std::endl;
 
         if (squashed) {
             if (taken) {
@@ -249,28 +269,35 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
         } else {
             delete history;
         }
+        // std::cout<<"line 266 reached"<<std::endl;
     }
 }
 
 void
 fastPathBP::retireSquashed(ThreadID tid, void *bp_history)
 {
+    // std::cout<<"line 273 reached"<<std::endl;
     BPHistory *history = static_cast<BPHistory*>(bp_history);
     delete history;
+    // std::cout<<"line 276 reached"<<std::endl;
 }
 
 unsigned
 fastPathBP::getGHR(ThreadID tid, void *bp_history) const
 {
+    // std::cout<<"line 282 reached"<<std::endl;
     return static_cast<BPHistory*>(bp_history)->globalHistoryReg;
+    // std::cout<<"line 284 reached"<<std::endl;
 }
 
 void
 fastPathBP::updateGlobalHistReg(ThreadID tid, bool taken)
-{
+{   
+    // std::cout<<"line 290 reached"<<std::endl;
     globalHistoryReg[tid] = taken ? (globalHistoryReg[tid] << 1) | 1 :
                                (globalHistoryReg[tid] << 1);
     globalHistoryReg[tid] &= historyRegisterMask;
+    // std::cout<<"line 291 reached"<<std::endl;
 }
 
 fastPathBP*

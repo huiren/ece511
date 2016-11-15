@@ -92,6 +92,18 @@ class fastPathBP : public BPredUnit
         // false: predict not-taken
         int result;
         bool finalPred;
+        int v[WEIGHT_NUM];
+        bool H[WEIGHT_NUM];
+        unsigned idx;
+
+        BPHistory() {
+            for(int i = 0; i < WEIGHT_NUM; i++) {
+                H[i] = false;
+                v[i] = 0;
+                result = 1;
+                idx = 0;
+            }
+        }
     };
 
     // choice predictors
@@ -102,16 +114,15 @@ class fastPathBP : public BPredUnit
     //std::vector<SatCounter> notTakenCounters;
     int weights[WEIGHT_ENTRY_NUM][WEIGHT_NUM];
     //non-speculative
-    int SR[WEIGHT_ENTRY_NUM];
-    int R[WEIGHT_ENTRY_NUM];
+    int SR[WEIGHT_NUM];
+    int R[WEIGHT_NUM];
     //speculative
-    unsigned SG;
-    unsigned G;
+    bool SG[WEIGHT_NUM];
+    bool G[WEIGHT_NUM];
 
-    int v[WEIGHT_ENTRY_NUM];
-    int s_v[WEIGHT_ENTRY_NUM];
+    int v[WEIGHT_NUM];
+    int s_v[WEIGHT_NUM];
 
-    bool H[WEIGHT_ENTRY_NUM];
 
     std::vector<unsigned> globalHistoryReg;
     unsigned globalHistoryBits;

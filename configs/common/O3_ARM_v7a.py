@@ -145,7 +145,7 @@ class O3_ARM_v7a_BP(YagsBP):
 '''
 
 
-
+'''
 class O3_ARM_v7a_BP(PerceptronBP):
     globalPredictorSize = 4096
     globalCtrBits = 2
@@ -153,8 +153,8 @@ class O3_ARM_v7a_BP(PerceptronBP):
     BTBTagSize = 18
     RASSize = 16
     instShiftAmt = 2
-
 '''
+
 class O3_ARM_v7a_BP(fastPathBP):
     globalPredictorSize = 4096
     globalCtrBits = 2
@@ -162,7 +162,7 @@ class O3_ARM_v7a_BP(fastPathBP):
     BTBTagSize = 18
     RASSize = 16
     instShiftAmt = 2
-'''
+
 class O3_ARM_v7a_3(DerivO3CPU):
     LQEntries = 16
     SQEntries = 16

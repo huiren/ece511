@@ -742,9 +742,9 @@
                     "eventq_index": 0, 
                     "BTBTagSize": 18, 
                     "BTBEntries": 2048, 
-                    "cxx_class": "PerceptronBP", 
+                    "cxx_class": "fastPathBP", 
                     "path": "system.cpu.branchPred", 
-                    "type": "PerceptronBP", 
+                    "type": "fastPathBP", 
                     "indirectPathLength": 3, 
                     "RASSize": 16, 
                     "globalPredictorSize": 4096
