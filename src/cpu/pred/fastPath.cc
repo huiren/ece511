@@ -249,11 +249,29 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
 
         if(((taken == true) && (finalPred == false)) || ((taken == false) && (finalPred == true)) 
              || std::abs(result) <= THRESHOLD) {
-            weights[entryIdx][0] = taken?1:-1 + weights[entryIdx][0];
+            if(taken) {
+                if(weights[entryIdx][0] < INT_MAX) {
+                    weights[entryIdx][0]++;
+                }
+            }
+            else {
+                if(weights[entryIdx][0] > INT_MIN) {
+                    weights[entryIdx][0]--;
+                }
+            }
             for(int i = 1; i < WEIGHT_NUM; i++) {
                 int k = history->v[i];
                 // std::cout<<"line 249 reached"<<k<<std::endl;
-                weights[k][i] += taken==history->H[i]?1:-1; 
+                if(taken==history->H[i]) {
+                    if(weights[k][i] < INT_MAX) {
+                        weights[k][i]++;
+                    }
+                }
+                else {
+                    if(weights[k][i] > INT_MIN) {
+                        weights[k][i]--;
+                    }
+                }
                 // std::cout<<"line 251 reached"<<std::endl;
             }
         }  
