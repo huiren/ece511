@@ -12,6 +12,11 @@ logic [width-1:0] data;
  * so that Modelsim works as expected.
  */
 
+initial
+begin
+    data = 31'b0;
+end
+
 always_ff @(posedge clk)
 begin
     if (load)
