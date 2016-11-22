@@ -19,7 +19,7 @@ module fastpath_bp
     output [32*8-1:0] r,
     output prediction
      
-)
+);
 
 parameter WEIGHT_WIDTH = 8;
 parameter GHR_WIDTH = 32;
