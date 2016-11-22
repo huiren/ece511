@@ -1,7 +1,8 @@
 module shfreg #(parameter width = 32)
 (
     input clk,
-    input load,
+    input [width-1:0] replace_in,
+    input load, replace,
     input in,
     output logic [width-1:0] out
 );
@@ -15,10 +16,10 @@ logic [width-1:0] data;
 
 always_ff @(posedge clk)
 begin
+	if (replace)
+		data <= replace_in;
     if (load)
-    begin
-        data = {in, data >> 1};
-    end
+        data <= {in, data >> 1};
 end
 
 assign out = data;

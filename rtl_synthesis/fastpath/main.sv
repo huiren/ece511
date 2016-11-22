@@ -1,4 +1,3 @@
-`include "register.sv"
 `include "shfreg.sv"
 `include "array.sv"
 `include "predict.sv"
@@ -14,8 +13,10 @@ module fastpath_bp
     input br_outcome, last_prediction,
     input [31:0] last_h,
     input [32*6-1:0] last_v,
+    input [32*8-1:0] last_r,
     output [31:0] h,
     output [32*6-1:0] sv,
+    output [32*8-1:0] r,
     output prediction
      
 )
@@ -31,6 +32,7 @@ logic [GHR_WIDTH-1:0] sg_out, ghr_out;
 logic [32*6-1:0] v_out;
 logic pred;
 logic [5:0] lookupIdx, updateIdx;
+logic replace_sv;
 
 assign lookupIdx = pc % WEIGHT_ENTRY_NUM;
 assign updateIdx = last_pc % WEIGHT_ENTRY_NUM;
@@ -38,9 +40,12 @@ assign updateIdx = last_pc % WEIGHT_ENTRY_NUM;
 assign prediction = pred;
 assign h = sg_out;
 assign sv = {lookupIdx, sv_out[31*6-1:0]};
+assign r = sr_out;
 
 SR sr0
 (
+	.replace_in(last_r),
+	.replace(replace),
     .clk(clk),
     .din(new_sr),
     .load(make_prediction),
@@ -65,21 +70,24 @@ neuron w0
     .last_prediction(last_prediction),
     .rdIdx(lookupIdx), 
     .wrIdx(updateIdx), 
-    .dataout(w_out) // 33 * 9 = 297
+    .dataout(w_out),
+    .replace_sv(replace_sv)
 );
 
 shfreg sg0
 (
     .clk(clk),
-    .load(make_prediction)
+    .load(make_prediction),
     .in(pred),
+    .replace_in(ghr_out),
+    .replace(replace_sv),
     .out(sg_out)
 );
 
 shfreg ghr0
 (
     .clk(clk),
-    .load(update)
+    .load(update),
     .in(br_outcome),
     .out(ghr_out)
 );
