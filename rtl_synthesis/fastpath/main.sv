@@ -1,3 +1,10 @@
+`include "register.sv"
+`include "shfreg.sv"
+`include "array.sv"
+`include "predict.sv"
+`include "sr.sv"
+`include "v.sv"
+
 module fastpath_bp
 (
     input clk,
