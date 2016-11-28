@@ -1,4 +1,4 @@
-`include "register.sv"
+`include "predict.sv"
 `include "shfreg.sv"
 `include "array.sv"
 
@@ -7,24 +7,23 @@
 
 module perceptron_bp (
 	input clk,    // Clock
-	input [63:0] pc,
+	input [63:0] pc, lastpc,
 	//input lookup, // Activate when last BR is resolved
 	input update, // Activate when fetching a new BR
 	input br_outcome, // Resolved BR
 	output logic pred // Prediction
-
 );
 
-parameter GHR_WIDTH = 32;
+parameter GHR_WIDTH = 16;
 parameter WEIGHT_NUM = GHR_WIDTH + 1;
-parameter WEIGHT_ENTRY_NUM = 4096;
+parameter WEIGHT_ENTRY_NUM = 32;
 
-logic [11:0] lookupIdx, updateIdx;
+logic [4:0] lookupIdx, updateIdx;
 logic [GHR_WIDTH-1:0] ghr_out;
 logic [WEIGHT_NUM*9-1:0] perceptrons_out;
 
-assign lookupIdx = pc % 4096;
-assign updateIdx = pc % 4096;
+
+assign updateIdx = lastpc % WEIGHT_ENTRY_NUM;
 
 shfreg ghr0 (
     .clk(clk),

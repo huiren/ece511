@@ -1,4 +1,4 @@
-module shfreg #(parameter width = 32)
+module shfreg #(parameter width = 16)
 (
     input clk,
     input load,
@@ -11,11 +11,12 @@ logic [width-1:0] data;
 /* Altera device registers are 0 at power on. Specify this
  * so that Modelsim works as expected.
  */
-
+/*
 initial
 begin
     data = 31'b0;
 end
+*/
 
 always_ff @(posedge clk)
 begin
