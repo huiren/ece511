@@ -43,11 +43,11 @@ fastPathBP::fastPathBP(const fastPathBPParams *params)
       globalPredictorSize(WEIGHT_ENTRY_NUM),
       globalCtrBits(params->globalCtrBits)
 {
-    
+
     if (!isPowerOf2(globalPredictorSize))
         fatal("Invalid global history predictor size.\n");
 
-    
+
     // takenCounters.resize(globalPredictorSize);
 
     // for (int i = 0; i < globalPredictorSize; ++i) {
@@ -78,11 +78,17 @@ fastPathBP::fastPathBP(const fastPathBPParams *params)
  */
 void
 fastPathBP::uncondBranch(ThreadID tid, Addr pc, void * &bpHistory)
-{                    
+{
     // std::cout<<"line 82 reached"<<std::endl;
     BPHistory *history = new BPHistory;
     history->globalHistoryReg = globalHistoryReg[tid];
     history->result = 1;
+    int entryIdx = (pc >> instShiftAmt) % WEIGHT_ENTRY_NUM;
+    // history->v[0] = entryIdx;
+    // std::cout<<"line 153 reached"<<std::endl;
+
+    history->idx = entryIdx;
+
     history->finalPred = true;
     bpHistory = static_cast<void*>(history);
     updateGlobalHistReg(tid, true);
@@ -125,7 +131,7 @@ fastPathBP::lookup(ThreadID tid, Addr branchAddr, void * &bpHistory)
     // std::cout<<"line 121 reached"<<std::endl;
     BPHistory *history = new BPHistory;
     history->globalHistoryReg = globalHistoryReg[tid];
-    
+
     // finalPrediction = takenGHBPrediction;
     // unsigned GHR = globalHistoryReg[tid];
     unsigned entryIdx = globalHistoryIdx % WEIGHT_ENTRY_NUM;
@@ -141,7 +147,7 @@ fastPathBP::lookup(ThreadID tid, Addr branchAddr, void * &bpHistory)
         finalPrediction = false;
     history->result = result;
     history->finalPred = finalPrediction;
-    bpHistory = static_cast<void*>(history);
+
     updateGlobalHistReg(tid, finalPrediction);
     //prediction is done
     //update partial sum
@@ -158,14 +164,17 @@ fastPathBP::lookup(ThreadID tid, Addr branchAddr, void * &bpHistory)
 
     history->idx = entryIdx;
 
+    bpHistory = static_cast<void*>(history);
+
+
     int SR_tmp[WEIGHT_NUM];
     for(int j = 1; j < WEIGHT_NUM; j++) {
         int k = WEIGHT_NUM - 1 - j;
         if(finalPrediction) {
-            SR_tmp[k + 1] = SR[k] + weights[entryIdx][j]; 
+            SR_tmp[k + 1] = SR[k] + weights[entryIdx][j];
         }
         else {
-            SR_tmp[k + 1] = SR[k] - weights[entryIdx][j]; 
+            SR_tmp[k + 1] = SR[k] - weights[entryIdx][j];
         }
     }
     for(int i = 0; i < WEIGHT_NUM; i++) {
@@ -217,6 +226,9 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
         // }
         unsigned entryIdx = history->idx;
 
+        // std::cout << "INT_MAX_LOCAL: " << INT_MAX_LOCAL<<'\n';
+        // std::cout << "INT_MIN_LOCAL: " << INT_MIN_LOCAL<<'\n';
+
         for(int i = 1; i < WEIGHT_NUM; i++) {
             int k = WEIGHT_NUM - 1 - i;
             if(taken) {
@@ -247,7 +259,7 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
         }
         // std::cout<<"line 242 reached"<<std::endl;
 
-        if(((taken == true) && (finalPred == false)) || ((taken == false) && (finalPred == true)) 
+        if(((taken == true) && (finalPred == false)) || ((taken == false) && (finalPred == true))
              || std::abs(result) <= THRESHOLD) {
             if(taken) {
                 if(weights[entryIdx][0] < INT_MAX) {
@@ -274,7 +286,7 @@ fastPathBP::update(ThreadID tid, Addr branchAddr, bool taken, void *bpHistory,
                 }
                 // std::cout<<"line 251 reached"<<std::endl;
             }
-        }  
+        }
         // std::cout<<"line 254 reached"<<std::endl;
 
         if (squashed) {
@@ -310,7 +322,7 @@ fastPathBP::getGHR(ThreadID tid, void *bp_history) const
 
 void
 fastPathBP::updateGlobalHistReg(ThreadID tid, bool taken)
-{   
+{
     // std::cout<<"line 290 reached"<<std::endl;
     globalHistoryReg[tid] = taken ? (globalHistoryReg[tid] << 1) | 1 :
                                (globalHistoryReg[tid] << 1);
