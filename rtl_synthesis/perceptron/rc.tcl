@@ -8,7 +8,7 @@
 #**************************************************/
 
 # All HDL files, separated by spaces
-set hdl_files {array.sv main.sv predict.sv shfreg.sv}
+set hdl_files {main.sv}
 
 # The Top-level Module, change example multiplyadd
 set DESIGN perceptron_bp
@@ -18,7 +18,7 @@ set DESIGN perceptron_bp
 set clkpin clk
 
 # Target frequency in MHz for optimization
-set delay 950
+set delay 1000
 
 #**************************************************/
 # NO further changes past this point
@@ -42,7 +42,7 @@ external_delay -input   0 -clock clk [find / -port ports_in/*]
 external_delay -output  0 -clock clk [find / -port ports_out/*]
 # Sets transition to default values for Synopsys SDC format, fall/rise
 # 400ps
-dc::set_clock_transition .4 clk
+#dc::set_clock_transition .4 clk
 
 check_design -unresolved
 

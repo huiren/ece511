@@ -20,7 +20,7 @@ parameter WEIGHT_ENTRY_NUM = 32;
 
 logic [4:0] lookupIdx, updateIdx;
 logic [GHR_WIDTH-1:0] ghr_out;
-logic [WEIGHT_NUM*9-1:0] perceptrons_out;
+logic [WEIGHT_NUM*8-1:0] perceptrons_out;
 
 
 assign updateIdx = lastpc % WEIGHT_ENTRY_NUM;

@@ -1,7 +1,7 @@
 module predict #(parameter WEIGHT_NUM = 17)
 (
 	input [15:0] ghr,
-	input [WEIGHT_NUM*9-1:0] p,
+	input [WEIGHT_NUM*8-1:0] p,
 	output logic pred
 );
 
