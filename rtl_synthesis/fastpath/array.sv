@@ -7,7 +7,7 @@ module neuron #(parameter WEIGHT_NUM = 33, parameter WEIGHT_ENTRY_NUM = 64)
     input br_outcome, last_prediction,
     input [5:0] rdIdx, wrIdx, // Max 4096
     output logic [WEIGHT_NUM*8-1:0] dataout,// 33 * 9 = 297
-    output logic replace_sv
+    output logic replace_sg
 );
 
 // 9-bit per weight, 33 weights per branch, 4096 branch records
@@ -17,12 +17,19 @@ logic[5:0] i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10,
            i21, i22, i23, i24, i25, i26, i27, i28, i29, i30,
            i31;
 
+always_comb
+begin
+    replace_sg = 0;
+    if (write == 1 & (br_outcome != last_prediction))
+        replace_sg = 1;
+end
+
+
 
 
 always_ff @(posedge clk)
 begin
 	// Self update involved
-    replace_sv <= 0;
     if (write == 1 & (br_outcome != last_prediction))
     begin
         if (br_outcome == 1)
@@ -62,7 +69,6 @@ begin
         data[30][i29] <= (br_outcome == last_h[29] ? data[30][i29] + 8'd1: data[30][i29] - 8'd1);
         data[31][i30] <= (br_outcome == last_h[30] ? data[31][i30] + 8'd1: data[31][i30] - 8'd1);
         data[32][i31] <= (br_outcome == last_h[31] ? data[32][i31] + 8'd1: data[32][i31] - 8'd1);
-        replace_sv <= 1;
 
     end 
 end

@@ -8,24 +8,24 @@
 #**************************************************/
 
 # All HDL files, separated by spaces
-set hdl_files {array.sv}
+set hdl_files {array.sv predict.sv shfreg.sv sr.sv v.sv main.sv}
 
 # The Top-level Module, change example multiplyadd
-set DESIGN perceptron
+set DESIGN fastpath_bp
 
 # Set clock pin name in design. If clk just leave untouched,
 # otherwise change clk
 set clkpin clk
 
 # Target frequency in MHz for optimization
-set delay 100
+set delay 1000
 
 #**************************************************/
 # NO further changes past this point
 
 set osucells /home/ywei14/ece511/FreePDK45/osu_soc
 
-set_attribute hdl_search_path /home/ywei14/ece511/perceptron
+set_attribute hdl_search_path /home/ywei14/ece511/fastpath
 set_attribute lib_search_path /home/ywei14/ece511/FreePDK45/osu_soc/lib/files
 
 set_attribute information_level 6 /

@@ -19,7 +19,7 @@ begin
 	if (replace)
 		data <= replace_in;
     if (load)
-        data <= {in, data >> 1};
+        data <= {in, data[width-1:1]};
 end
 
 assign out = data;

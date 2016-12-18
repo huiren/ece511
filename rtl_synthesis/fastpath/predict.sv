@@ -3,8 +3,8 @@ module predict #(parameter WEIGHT_NUM = 33, parameter WEIGHT_WIDTH = 8)
 	input [WEIGHT_NUM*WEIGHT_WIDTH-1:0] sr,
     input [WEIGHT_NUM*WEIGHT_WIDTH-1:0] w,
     output logic pred,
-    output logic [WEIGHT_NUM*WEIGHT_WIDTH-1:0] new_sr,
-)
+    output logic [WEIGHT_NUM*WEIGHT_WIDTH-1:0] new_sr
+);
 
 parameter WEIGHT_ENTRY_NUM = 64;
 
